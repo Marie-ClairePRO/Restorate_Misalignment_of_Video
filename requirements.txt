@@ -1,0 +1,8 @@
+torch==2.3.0+cu124 -f https://download.pytorch.org/whl/torch_cu124.html
+torchvision==0.18.0+cu124 -f https://download.pytorch.org/whl/torchvision_cu124.html
+torchaudio==2.3.0+cu124 -f https://download.pytorch.org/whl/torchaudio_cu124.html
+Pillow
+matplotlib
+numpy
+ffmpeg-python
+opencv-python

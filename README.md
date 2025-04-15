@@ -4,7 +4,7 @@
 
 This Python code is designed to address a very specific and complex video degradation issue: **non-constant temporal and spatial misalignments and mixing of lines (fields)**. This problem is particularly prevalent in older analog video formats, especially those originally recorded on magnetic tape and subsequently digitized.
 
-The code attempts to correct these artifacts by analyzing and adjusting each frame based on its relationship with the preceding frame. It learns and applies both **horizontal shifts** (to correct line misalignments) and **temporal blending** (to mitigate the mixing of fields from different time instances) on a **per-row basis**. This per-row granularity is crucial because the errors are not uniform across the frame.
+The code attempts to correct these artifacts by analyzing and adjusting each frame based on its relationship with the preceding frame. It learns and applies both **horizontal shifts** (to correct line misalignments) and **temporal blending** (to mitigate the mixing of fields from different time instances) on a **per-row basis**, at a **subpixel level**. This per-row granularity is crucial because the errors are not uniform across the frame.
 
 ## The Problem: Jitter and Field Mixing in Analog Video
 
@@ -27,39 +27,39 @@ This code tackles these issues by:
 1.  **Loading Video Frames:** It reads the input video frame by frame.
 2.  **Temporal Stacking:** For each current frame, it considers the immediately preceding frame.
 3.  **Per-Row Optimization:** For each row of the current frame, the code learns:
-    * **Horizontal Shift:** An optimal horizontal displacement to correct line misalignments.
+    * **Horizontal Shift:** An optimal noninteger horizontal displacement to correct line misalignments with pixel interpolation.
     * **Temporal Alpha:** A blending factor (between 0 and 1) to interpolate between the current frame's row and the corresponding row from the previous frame. This addresses the temporal mixing of fields. The alpha value is learned independently for each row, allowing for spatially varying temporal correction.
-4.  **Total Variation Minimization:** The optimization process aims to minimize the total variation in the output frame. This acts as a smoothness constraint, encouraging visually plausible corrections.
+4.  **Total Variation Minimization:** The optimization process aims to minimize the total variation in the output frame. The total variation is the sum of absolute values of the difference between each consecutive two lines.
 5.  **Frame-by-Frame Processing:** The code processes the video frame by frame, applying the learned corrections sequentially.
 
 ## Example Visualizations
 
-Below are example frames from a problematic video, illustrating the issues this code aims to resolve:
+Below are example frames from the problematic video that inspired this work :
 
-**1. Original Frame (Upper part relatively good):**
+**1. Original Frame (Good upper part, bad lower part):**
 
 ![](original_2.png)
 
-**2. Same Frame (Odd lines from previous frame - Lower part relatively good):**
+**2. Same Frame (Odd lines from previous frame - Bad upper part, good lower part):**
 
 ![](mixed_fields_2.png)
 
-As you can see, in this frame, the upper portion appears relatively stable in the original, while the lower part shows signs of field misalignment. When we simulate having the odd lines from the previous frame, the lower part improves, suggesting a temporal mixing issue that varies spatially.
+As you can see, in this frame, the upper portion appears relatively stable in the original, while the lower part shows signs of field misalignment. When we simulate having the odd lines from the previous frame, the lower part improves but the upper part deteriorates, suggesting a temporal mixing issue that varies spatially.
 
-**3. Original Frame (Lower part relatively good):**
+**3. Original Frame (Bad upper part, good lower part):**
 
 ![](original_1.png)
 
-**4. Same Frame (Odd lines from previous frame - Upper part relatively good):**
+**4. Same Frame (Odd lines from previous frame - Good upper part, bad lower part):**
 
 ![](mixed_fields_1.png)
 
 
-In this different frame, the lower part of the original is better, while the upper part exhibits artifacts. Again, simulating the odd lines being from the previous frame improves the upper section, highlighting the non-constant spatial and temporal nature of the problem.
+In this different frame, the lower part of the original is better, while the upper part exhibits artifacts. This time, simulating the odd lines being from the previous frame improves the upper section, highlighting the non-constant spatial and temporal nature of the problem.
 
 ## Generalization to Other Misaligned Videos
 
-While initially developed for a specific case, the underlying principles of this code can be generalized to other videos suffering from similar misalignments:
+While initially developed for this specific case, the underlying principles of this code can be generalized to other videos suffering from similar misalignments:
 
 * **Horizontal Jitter:** The per-row horizontal shift correction can address various forms of line instability.
 * **Interlacing Artifacts:** The temporal blending, even when only considering the previous frame, can help reduce "combing" artifacts arising from misaligned or temporally offset fields.
@@ -69,7 +69,14 @@ However, the effectiveness of the code on other videos will depend on the specif
 
 ## Usage
 
-To use this code, you will need to have the required Python libraries installed (PyTorch, OpenCV, etc.). You can then run the main script, providing the path to your input video and specifying the desired output path and processing parameters.
+You can create a new python environment on conda, and install requirements by running
+
+```
+conda env create -f environment.yml
+pip install -r requirements.txt
+```
+
+These requirements install torch with cuda version 12.4. You can then run the main script, providing the path to your input video and specifying the desired output path and processing parameters.
 
 ```bash
 python main_restorate_lines.py --inputvideo input.mp4 --outputvideo output.mp4 --nbFrames '[number of frames to process, default : infinity]' --startTime '[start timecode in format hh:mm:ss]'
