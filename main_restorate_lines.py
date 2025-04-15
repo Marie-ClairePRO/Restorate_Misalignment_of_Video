@@ -96,7 +96,6 @@ def total_variation_loss(img: torch.Tensor) -> torch.Tensor:
     tv = torch.sum(dv)
     return tv
 
-# --- Helper function for NumPy frame to Tensor conversion ---
 def frame_to_tensor_PIL(frame_np: np.ndarray, device: torch.device) -> torch.Tensor:
     """Converts a NumPy frame (H, W, C) uint8 to a Tensor (1, C, H, W) float32 [0,1]."""
     img_pil = Image.fromarray(frame_np)
@@ -106,7 +105,6 @@ def frame_to_tensor_PIL(frame_np: np.ndarray, device: torch.device) -> torch.Ten
     img_tensor = preprocess(img_pil).unsqueeze(0)  # Add batch dimension (B=1)
     return img_tensor.to(device)
 
-# --- Helper function for Tensor to NumPy frame conversion ---
 def tensor_to_frame_PIL(tensor: torch.Tensor) -> np.ndarray:
     """Converts a Tensor (1, C, H, W) float32 [0,1] back to NumPy frame (H, W, C) uint8."""
     img = tensor.squeeze(0).cpu().detach().permute(1, 2, 0).numpy()
@@ -137,7 +135,7 @@ def optimize_frame_shifts_temporal_spatial(frame_stack,
     frame_shifter = RowTemporalShiftInterp(height=height).to(device)
     with torch.no_grad():
         frame_shifter.row_shifts.data = torch.randn_like(frame_shifter.row_shifts) * 0.01
-        #frame_shifter.row_shifts.data.calmp_(-MAX_TRUE_SHIFT, MAX_TRUE_SHIFT)
+        frame_shifter.row_shifts.data.clamp_(-MAX_TRUE_SHIFT, MAX_TRUE_SHIFT)
         frame_shifter.row_temporal_shifts.data = torch.randn_like(frame_shifter.row_temporal_shifts) * 0.2
         frame_shifter.row_temporal_shifts.data.clamp_(0., 1.0)
 
@@ -151,7 +149,7 @@ def optimize_frame_shifts_temporal_spatial(frame_stack,
         frame_optimizer.step()
         with torch.no_grad():
             frame_shifter.row_temporal_shifts.data.clamp_(0.0, 1.0)
-            #frame_shifter.row_shifts.data.clamp_(-MAX_TRUE_SHIFT, MAX_TRUE_SHIFT)
+            frame_shifter.row_shifts.data.clamp_(-MAX_TRUE_SHIFT, MAX_TRUE_SHIFT)
         frame_losses.append(loss.item())
     return frame_shifter, frame_losses
 
@@ -169,7 +167,6 @@ if __name__ == '__main__':
     START_TIME = opt.startTime
     NB_FRAMES = opt.nbFrames
 
-    # Check for GPU availability
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
@@ -177,7 +174,7 @@ if __name__ == '__main__':
     if not cap.isOpened():
         raise IOError("Cannot open video")
 
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')  # Or other codec
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -191,20 +188,17 @@ if __name__ == '__main__':
         print(f"Starting from frame: {start_frame} (time: {START_TIME})")
         
     frames_processed = 0
-    frame_buffer = []
+    prev_frame_tensor = None
+
     while frames_processed < NB_FRAMES:
         ret, frame_np = cap.read()
         if not ret:
             break
-        frame_buffer.append(frame_to_tensor_cv2(frame_np, device))
-        frames_processed += 1
-    cap.release()
 
-    for current_i in range(len(frame_buffer)):
-        prev_i = max(0, current_i - 1)
-        
-        prev_frame_tensor = frame_buffer[prev_i]
-        current_frame_tensor = frame_buffer[current_i]
+        current_frame_tensor = frame_to_tensor_cv2(frame_np, device)
+
+        if prev_frame_tensor is None:
+            prev_frame_tensor = current_frame_tensor.clone()
 
         frame_stack = torch.stack([prev_frame_tensor, current_frame_tensor], dim=2) # Shape (B, C, 2, H, W)
 
@@ -219,17 +213,18 @@ if __name__ == '__main__':
 
         output_frame_np = tensor_to_frame_cv2(output_frame_tensor)
         out.write(output_frame_np)
-
-        if (current_i % 100) == 0 and current_i > 0:
-            min_temp_shift = optimized_shifter.row_temporal_shifts.min().item()
-            max_temp_shift = optimized_shifter.row_temporal_shifts.max().item()
+        
+        prev_frame_tensor = current_frame_tensor.clone()
+        frames_processed += 1
+        if (frames_processed % 100) == 0:
+            mean_temp_shift = optimized_shifter.row_temporal_shifts.mean().item()
             min_spa_shift = optimized_shifter.row_shifts.min().item()
             max_spa_shift = optimized_shifter.row_shifts.max().item()
 
-            print(f"Processed frame {current_i}. \
+            print(f"Processed frame {frames_processed}. \
                     Final TV loss: {frame_losses[-1]:.4f}, \
                     Spatial Alpha (min/max): {min_spa_shift:.2f}/{max_spa_shift:.2f} \
-                    Temporal Alpha (min/max): {min_temp_shift:.2f}/{max_temp_shift:.2f}")
+                    Temporal Alpha (mean): {mean_temp_shift:.2f}")
             
     out.release()
     print(f"\nFinished processing. {frames_processed} frames written to {OUTPUT_VIDEO_PATH}")

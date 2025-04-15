@@ -10,6 +10,7 @@ import os
 import argparse
 import ffmpeg
 import cv2
+from math import inf
 
 # Optimization parameters
 MAX_TRUE_SHIFT = 5.0  # Maximum absolute value for the random ground truth shifts (for comparison plot)
@@ -134,21 +135,20 @@ def optimize_frame_shifts(frame_tensor, height, device, learning_rate=LEARNING_R
 # --- Main Script ---
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='RRN Secam ')
-    parser.add_argument('--gpuNum', default=0, type=int, help='GPU Number')
-    parser.add_argument('--inputvideo', type=str, default='ORIGINAL-MGCAA0035917--AG_JAQ_01_EXT.mkv')
-    parser.add_argument('--outputvideo', type=str, default='dejittered.mp4')
-    parser.add_argument('--fieldsPerFrame', type=int, default=2, help='one or two fields per frame')
-    parser.add_argument('--startTime', type=str, default='00:01:30', help='start timecode')
-    parser.add_argument('--nbFrames', type=int, default=100, help='number of processed frames')
-    parser.add_argument('--outputQuality', type=int, default=17, help='MPEG 4 quality level')
-    parser.add_argument('--outputRatio', type=str, default='4:3', help='video output ratio')
-    parser.add_argument('--noAlign', action="store_true", help='discard alignement process')
+    parser.add_argument('--inputVideo', type=str, default='ORIGINAL-MGCAA0035917--AG_JAQ_01_EXT.mkv')
+    parser.add_argument('--outputVideo', type=str, default='dejittered.mp4')
+    parser.add_argument('--fieldsPerFrame', type=float, default=2., help='either one, two or one and a half field per frame')
+    parser.add_argument('--startTime', type=str, default='00:01:30', help='start timecode in format hh:mm:ss')
+    parser.add_argument('--nbFrames', type=float, default=inf, help='number of frames to process')
+    parser.add_argument('--noAlign', action="store_true", help='only mix fields and make no alignment')
     opt = parser.parse_args()
 
     INPUT_VIDEO_PATH = opt.inputvideo
     OUTPUT_VIDEO_PATH = opt.outputvideo
     FIELDS_PER_FRAME = opt.fieldsPerFrame
+    assert FIELDS_PER_FRAME in [1., 2., 1.5], f"{FIELDS_PER_FRAME} fields per frame not supported yet"
     START_TIME = opt.startTime
+    NB_FRAMES = opt.nbFrames
 
     # Check for GPU availability
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -174,7 +174,7 @@ if __name__ == '__main__':
     frames_processed = 0
     previous_frame_tensor = None
 
-    while frames_processed < opt.nbFrames:
+    while frames_processed < NB_FRAMES:
         ret, frame_np = cap.read()
         if not ret:
             break
@@ -183,8 +183,11 @@ if __name__ == '__main__':
 
         mix_and_shift_frame_tensor = current_frame_tensor.clone()
         
-        if previous_frame_tensor is not None and FIELDS_PER_FRAME == 2:
+        if previous_frame_tensor is not None and FIELDS_PER_FRAME == 2.:
             mix_and_shift_frame_tensor[:, :, 1::2, :] = previous_frame_tensor[:, :, 1::2, :]
+
+        if previous_frame_tensor is not None and FIELDS_PER_FRAME == 1.5:
+            mix_and_shift_frame_tensor[:, :, 1:(height//2):2, :] = previous_frame_tensor[:, :, 1:(height//2):2, :]
 
         #define previous frame for next iteration
         previous_frame_tensor = current_frame_tensor.detach()
