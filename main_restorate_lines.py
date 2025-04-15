@@ -12,17 +12,10 @@ import ffmpeg
 import cv2
 from math import inf
 
-# Optimization parameters
-MAX_TRUE_SHIFT = 5.0  # Maximum absolute value for the random ground truth shifts (for comparison plot)
-LEARNING_RATE = 0.1
-NUM_ITERATIONS = 100  # Iterations to find shifts for each frame (reduced from 300)
-SEED = 42  # for reproducibility
-
-# Set seeds for reproducibility
+SEED = 42
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
-# --- RowTemporalShiftInterp Module ---
 class RowTemporalShiftInterp(nn.Module):
     """
     A PyTorch module that shifts each row of an input image tensor horizontally
@@ -50,7 +43,7 @@ class RowTemporalShiftInterp(nn.Module):
         # Learnable parameters for horizontal shift (one per row)
         self.row_shifts = nn.Parameter(torch.zeros(height))
 
-        # Learnable parameters for temporal shift (one per even row)
+        # Learnable parameters for temporal shift (one per odd row)
         self.row_temporal_shifts = nn.Parameter(torch.zeros(height//2))
         self.row_temporal_shifts.data.clamp_(0.0, 1.0) # Initialize within the valid range
 
@@ -129,13 +122,14 @@ def timecode_to_seconds(timecode_str):
 def optimize_frame_shifts_temporal_spatial(frame_stack, 
                                            height, 
                                            device, 
-                                           learning_rate=LEARNING_RATE, 
-                                           num_iterations=NUM_ITERATIONS):
+                                           learning_rate, 
+                                           num_iterations,
+                                           max_shift):
     """Optimize horizontal and per-row temporal alpha."""
     frame_shifter = RowTemporalShiftInterp(height=height).to(device)
     with torch.no_grad():
         frame_shifter.row_shifts.data = torch.randn_like(frame_shifter.row_shifts) * 0.01
-        frame_shifter.row_shifts.data.clamp_(-MAX_TRUE_SHIFT, MAX_TRUE_SHIFT)
+        frame_shifter.row_shifts.data.clamp_(-max_shift, max_shift)
         frame_shifter.row_temporal_shifts.data = torch.randn_like(frame_shifter.row_temporal_shifts) * 0.2
         frame_shifter.row_temporal_shifts.data.clamp_(0., 1.0)
 
@@ -149,23 +143,30 @@ def optimize_frame_shifts_temporal_spatial(frame_stack,
         frame_optimizer.step()
         with torch.no_grad():
             frame_shifter.row_temporal_shifts.data.clamp_(0.0, 1.0)
-            frame_shifter.row_shifts.data.clamp_(-MAX_TRUE_SHIFT, MAX_TRUE_SHIFT)
+            frame_shifter.row_shifts.data.clamp_(-max_shift, max_shift)
         frame_losses.append(loss.item())
     return frame_shifter, frame_losses
 
-# --- Main Script ---
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Restoration')
-    parser.add_argument('--inputvideo', type=str, default='ORIGINAL-MGCAA0035917--AG_JAQ_01_EXT.mkv')
-    parser.add_argument('--outputvideo', type=str, default='output.mp4')
-    parser.add_argument('--startTime', type=str, default='00:00:42', help='start timecode in format hh:mm:ss')
+    parser.add_argument('--inputVideo', type=str, default='input/video.mkv')
+    parser.add_argument('--outputVideo', type=str, default='outputs/output.mp4')
+    parser.add_argument('--startTime', type=str, default='00:00:00', help='start timecode in format hh:mm:ss')
     parser.add_argument('--nbFrames', type=float, default=inf, help='number of frames to process')
+    parser.add_argument('--max_shift', type=int, default=5, help='Maximum absolute value shifts')
+    parser.add_argument('--learning_rate', type=float, default=0.1)
+    parser.add_argument('--num_iterations', type=int, default=100, help='Number of iterations of optimization')
     opt = parser.parse_args()
 
-    INPUT_VIDEO_PATH = opt.inputvideo
-    OUTPUT_VIDEO_PATH = opt.outputvideo
+    INPUT_VIDEO_PATH = opt.inputVideo
+    OUTPUT_VIDEO_PATH = opt.outputVideo
     START_TIME = opt.startTime
     NB_FRAMES = opt.nbFrames
+    
+    # Optimization parameters
+    LEARNING_RATE = opt.learning_rate
+    NUM_ITERATIONS = opt.num_iterations 
+    MAX_SHIFT = opt.max_shift
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -205,7 +206,10 @@ if __name__ == '__main__':
         optimized_shifter, frame_losses = optimize_frame_shifts_temporal_spatial(
             frame_stack,
             height=height,
-            device=device
+            device=device,
+            learning_rate=LEARNING_RATE,
+            num_iterations=NUM_ITERATIONS,
+            max_shift=MAX_SHIFT
         )
 
         with torch.no_grad():
@@ -217,14 +221,15 @@ if __name__ == '__main__':
         prev_frame_tensor = current_frame_tensor.clone()
         frames_processed += 1
         if (frames_processed % 100) == 0:
-            mean_temp_shift = optimized_shifter.row_temporal_shifts.mean().item()
+            min_temp_shift = optimized_shifter.row_temporal_shifts.min().item()
+            max_temp_shift = optimized_shifter.row_temporal_shifts.max().item()
             min_spa_shift = optimized_shifter.row_shifts.min().item()
             max_spa_shift = optimized_shifter.row_shifts.max().item()
 
             print(f"Processed frame {frames_processed}. \
                     Final TV loss: {frame_losses[-1]:.4f}, \
                     Spatial Alpha (min/max): {min_spa_shift:.2f}/{max_spa_shift:.2f} \
-                    Temporal Alpha (mean): {mean_temp_shift:.2f}")
+                    Temporal Alpha (min/max): {min_temp_shift:.2f}/{max_temp_shift:.2f} ")
             
     out.release()
     print(f"\nFinished processing. {frames_processed} frames written to {OUTPUT_VIDEO_PATH}")

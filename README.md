@@ -38,21 +38,21 @@ Below are example frames from the problematic video that inspired this work :
 
 **1. Original Frame (Good upper part, bad lower part):**
 
-![](original_2.png)
+![](assets/original_2.png)
 
 **2. Same Frame (Odd lines from previous frame - Bad upper part, good lower part):**
 
-![](mixed_fields_2.png)
+![](assets/mixed_fields_2.png)
 
 As you can see, in this frame, the upper portion appears relatively stable in the original, while the lower part shows signs of field misalignment. When we simulate having the odd lines from the previous frame, the lower part improves but the upper part deteriorates, suggesting a temporal mixing issue that varies spatially.
 
 **3. Original Frame (Bad upper part, good lower part):**
 
-![](original_1.png)
+![](assets/original_1.png)
 
 **4. Same Frame (Odd lines from previous frame - Good upper part, bad lower part):**
 
-![](mixed_fields_1.png)
+![](assets/mixed_fields_1.png)
 
 
 In this different frame, the lower part of the original is better, while the upper part exhibits artifacts. This time, simulating the odd lines being from the previous frame improves the upper section, highlighting the non-constant spatial and temporal nature of the problem.
@@ -72,11 +72,19 @@ However, the effectiveness of the code on other videos will depend on the specif
 You can create a new python environment on conda, and install requirements by running
 
 ```
-conda env create -f environment.yml
+conda env create -n restaurate_jitter python=3.10
 pip install -r requirements.txt
 ```
 
 These requirements install torch with cuda version 12.4. You can then run the main script, providing the path to your input video and specifying the desired output path and processing parameters.
 
 ```bash
-python main_restorate_lines.py --inputvideo input.mp4 --outputvideo output.mp4 --nbFrames '[number of frames to process, default : infinity]' --startTime '[start timecode in format hh:mm:ss]'
+python main_restorate_lines.py --inputvideo input/input.mp4 --outputvideo output/output.mp4 --nbFrames '[number of frames to process, default : infinity]' --startTime '[start timecode in format hh:mm:ss]'
+```
+
+You can also change the optimization parameters --learning_rate (set to 0.1), --num_iteration (set to 100), --max_shift (maximum value authorized for pixel shift set to 5) 
+
+## Results
+
+![](assets/result1.png)
+![](assets/result2.png)
