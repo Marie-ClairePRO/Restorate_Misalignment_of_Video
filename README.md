@@ -1,36 +1,21 @@
-# Temporal and Spatial Dejittering for Interlaced Video
+# Temporal and Spatial Dejittering for Interlaced Video of Original Film
 
 ## Overview
 
-This Python code is designed to address a very specific and complex video degradation issue: **non-constant temporal and spatial misalignments and mixing of lines (fields)**. This problem is particularly prevalent in older analog video formats, especially those originally recorded on magnetic tape and subsequently digitized.
+This Python code is designed to address a very specific video degradation issue of a film converted in an interlaced video: **non-constant temporal and spatial misalignments and mixing of lines (fields)**.
 
 The code attempts to correct these artifacts by analyzing and adjusting each frame based on its relationship with the preceding frame. It learns and applies both **horizontal shifts** (to correct line misalignments) and **temporal blending** (to mitigate the mixing of fields from different time instances) on a **per-row basis**, at a **subpixel level**. This per-row granularity is crucial because the errors are not uniform across the frame.
 
 ## The Problem: Jitter and Field Mixing in Analog Video
 
-Old analog video signals, especially those stored on magnetic tape, are often recorded and played back using an **interlaced scanning** technique. In interlacing, each full video frame is displayed in two separate passes (fields):
-
-* **Field 1 (Odd lines):** Contains all the odd-numbered horizontal lines of the image.
-* **Field 2 (Even lines):** Contains all the even-numbered horizontal lines of the image.
-
-These two fields are displayed sequentially at a high rate to create the illusion of a full frame. However, several issues can arise during recording, playback, or digitization, leading to the artifacts this code aims to correct:
-
-* **Mechanical Instability:** Fluctuations in the speed of the tape transport or the rotation of the recording/playback heads can cause horizontal jitter and misalignments between the odd and even fields.
-* **Magnetic Reading Errors:** Degradation of the magnetic tape or inconsistencies in the reading process can introduce timing errors, leading to the odd and even fields being misaligned or even partially corrupted.
-* **Field Order Issues:** During digitization, the order of the fields might be reversed or inconsistent, leading to jerky motion and visual artifacts.
-* **Temporal Mixing:** A particularly challenging issue occurs when the odd lines of a frame originate from one temporal field (e.g., the current one), while the even lines originate from a slightly different temporal field (e.g., the previous or next). This mixing can be inconsistent both across the frame (some parts are fine, others are mixed) and across time (the degree and direction of mixing changes from frame to frame). This is often visible as a "tearing" or "combing" effect, especially during motion.
+Old analog video signals stored on magnetic tape are often recorded and played back using an **interlaced scanning** technique. In interlacing, each full video frame is displayed in two separate passes containing the odd-numbered horizontal lines of the image and the even-numbered horizontal lines of the image. These two fields are displayed sequentially at a high rate to create the illusion of a full frame. However, several issues can arise during recording, playback, or digitization, leading to artifacts.
 
 ## Code Functionality
 
-This code tackles these issues by:
-
-1.  **Loading Video Frames:** It reads the input video frame by frame.
-2.  **Temporal Stacking:** For each current frame, it considers the immediately preceding frame.
-3.  **Per-Row Optimization:** For each row of the current frame, the code learns:
-    * **Horizontal Shift:** An optimal noninteger horizontal displacement to correct line misalignments with pixel interpolation.
-    * **Temporal Alpha:** A blending factor (between 0 and 1) to interpolate between the current frame's row and the corresponding row from the previous frame. This addresses the temporal mixing of fields. The alpha value is learned independently for each row, allowing for spatially varying temporal correction.
-4.  **Total Variation Minimization:** The optimization process aims to minimize the total variation in the output frame. The total variation is the sum of absolute values of the difference between each consecutive two lines.
-5.  **Frame-by-Frame Processing:** The code processes the video frame by frame, applying the learned corrections sequentially.
+**Per-Row Optimization:** The code processes the video frame by frame. For each row of the current frame, the code learns:
+* **Horizontal Shift:** An optimal noninteger horizontal displacement to correct line misalignments with pixel interpolation.
+* **Temporal Alpha:** A blending factor (between 0 and 1) to interpolate between the current frame's row and the corresponding row from the previous frame.
+**Total Variation Minimization:** The optimization process aims to minimize the total variation in the output frame. The total variation is the sum of absolute values of the difference between each consecutive two lines.
 
 ## Example Visualizations
 
@@ -59,13 +44,7 @@ In this different frame, the lower part of the original is better, while the upp
 
 ## Generalization to Other Misaligned Videos
 
-While initially developed for this specific case, the underlying principles of this code can be generalized to other videos suffering from similar misalignments:
-
-* **Horizontal Jitter:** The per-row horizontal shift correction can address various forms of line instability.
-* **Interlacing Artifacts:** The temporal blending, even when only considering the previous frame, can help reduce "combing" artifacts arising from misaligned or temporally offset fields.
-* **Digitization Issues:** If the digitization process introduced inconsistent field timing, the adaptive per-row adjustments might be able to compensate to some extent.
-
-However, the effectiveness of the code on other videos will depend on the specific nature and severity of the misalignments. Fine-tuning the optimization parameters (learning rate, number of iterations) might be necessary for different types of video degradation.
+This code can be generalized to other videos suffering from global misalignments, in the case where the original source of the video was made of complete frames that were mis-aligned at some point. The idea might be adapted to other troubles.
 
 ## Usage
 
